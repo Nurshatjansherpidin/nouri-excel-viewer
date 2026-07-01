@@ -138,7 +138,6 @@
             padding: 10px 12px;
             border-right: 1px solid var(--border-color);
             border-bottom: 2px solid var(--border-color);
-            user-select: none;
             white-space: nowrap;
             z-index: 10;
         }
@@ -186,31 +185,6 @@
         .sort-btn.active, .filter-btn.active {
             color: var(--highlight-color);
             font-weight: bold;
-        }
-
-        .col-filter-container {
-            margin-top: 6px;
-            display: none;
-        }
-
-        .col-filter-container.visible {
-            display: block;
-        }
-
-        .col-filter-input {
-            width: 100%;
-            box-sizing: border-box;
-            background-color: var(--input-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 3px;
-            padding: 4px 6px;
-            color: var(--input-fg);
-            font-size: 11px;
-            outline: none;
-        }
-
-        .col-filter-input:focus {
-            border-color: var(--highlight-color);
         }
 
         td {
@@ -274,13 +248,129 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+
+        /* Excel-Style Dropdown Filter Popup */
+        .filter-dropdown {
+            position: absolute;
+            background-color: var(--hdr-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+            width: 230px;
+            max-height: 320px;
+            display: none; /* Handled via JavaScript flex */
+            flex-direction: column;
+            z-index: 10000;
+            font-size: 12px;
+            color: var(--fg-color);
+        }
+
+        .dropdown-search {
+            padding: 8px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .dropdown-search input {
+            width: 100%;
+            box-sizing: border-box;
+            background-color: var(--input-bg);
+            border: 1px solid var(--input-border);
+            border-radius: 3px;
+            padding: 4px 8px;
+            color: var(--input-fg);
+            outline: none;
+            font-size: 12px;
+        }
+
+        .dropdown-search input:focus {
+            border-color: var(--highlight-color);
+        }
+
+        .dropdown-list {
+            flex: 1;
+            overflow-y: auto;
+            max-height: 180px;
+            padding: 4px 0;
+        }
+
+        .dropdown-list-item {
+            padding: 4px 12px;
+            display: flex;
+            align-items: center;
+        }
+
+        .dropdown-list-item:hover {
+            background-color: var(--hover-row-bg);
+        }
+
+        .dropdown-list-item label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .dropdown-list-item input[type="checkbox"] {
+            margin: 0;
+            cursor: pointer;
+        }
+
+        .dropdown-list-item span {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .select-all-item {
+            border-bottom: 1px solid var(--border-color);
+            font-weight: 600;
+            padding: 6px 12px;
+        }
+
+        .dropdown-actions {
+            display: flex;
+            justify-content: flex-end;
+            padding: 8px;
+            border-top: 1px solid var(--border-color);
+            gap: 8px;
+            background-color: rgba(0, 0, 0, 0.1);
+        }
+
+        .action-btn {
+            padding: 4px 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 11px;
+            outline: none;
+            background-color: var(--input-bg);
+            color: var(--input-fg);
+        }
+
+        .action-btn:hover {
+            background-color: var(--hover-row-bg);
+            color: var(--tab-active-fg);
+        }
+
+        .ok-btn {
+            background-color: var(--highlight-color);
+            color: #ffffff;
+            border-color: var(--highlight-color);
+        }
+
+        .ok-btn:hover {
+            background-color: var(--vscode-button-hoverBackground, #0066cc);
+            color: #ffffff;
+        }
     </style>
 </head>
 <body>
     <div class="toolbar">
         <div class="file-info" id="fileName">Loading workbook...</div>
         <div class="search-box">
-            <input type="text" id="searchInput" placeholder="Global filter..." disabled>
+            <input type="text" id="searchInput" placeholder="Global search..." disabled>
         </div>
     </div>
     
@@ -295,6 +385,25 @@
             <thead id="tableHead"></thead>
             <tbody id="tableBody"></tbody>
         </table>
+    </div>
+
+    <!-- Excel-style Dropdown Popup overlay -->
+    <div id="filterDropdown" class="filter-dropdown">
+        <div class="dropdown-search">
+            <input type="text" id="dropdownSearchInput" placeholder="Search values...">
+        </div>
+        <div class="dropdown-list-item select-all-item">
+            <label>
+                <input type="checkbox" id="selectAllCheckbox">
+                <span>(Select All)</span>
+            </label>
+        </div>
+        <div class="dropdown-list" id="dropdownList"></div>
+        <div class="dropdown-actions">
+            <button class="action-btn ok-btn" onclick="applyDropdownFilter()">OK</button>
+            <button class="action-btn clear-btn" onclick="clearDropdownFilter()">Clear</button>
+            <button class="action-btn cancel-btn" onclick="closeDropdown()">Cancel</button>
+        </div>
     </div>
 
     <div class="status-bar">
@@ -314,8 +423,14 @@
         let sortColIndex = null;
         let sortAsc = true;
 
-        let columnFilters = {};
-        let columnFilterVisible = {};
+        // Stores checked values array per column index: { colIndex: [val1, val2] }
+        let columnFilters = {}; 
+
+        // Active dropdown info
+        let activeDropdownColIndex = null;
+        let allUniqueColValues = [];
+        let searchedDropdownValues = [];
+        let checkedDropdownValues = new Set();
 
         const fileNameEl = document.getElementById('fileName');
         const searchInput = document.getElementById('searchInput');
@@ -326,6 +441,10 @@
         const tableBody = document.getElementById('tableBody');
         const statusText = document.getElementById('statusText');
         const statsText = document.getElementById('statsText');
+        const filterDropdown = document.getElementById('filterDropdown');
+        const dropdownList = document.getElementById('dropdownList');
+        const dropdownSearchInput = document.getElementById('dropdownSearchInput');
+        const selectAllCheckbox = document.getElementById('selectAllCheckbox');
 
         // Handle Messages from Extension Host
         window.addEventListener('message', event => {
@@ -355,6 +474,19 @@
                 
                 searchInput.disabled = false;
                 searchInput.addEventListener('input', handleFilter);
+                
+                // Initialize dropdown events
+                dropdownSearchInput.addEventListener('input', handleDropdownSearch);
+                selectAllCheckbox.addEventListener('change', handleSelectAllChange);
+                
+                // Close dropdown on click outside
+                document.addEventListener('click', event => {
+                    if (filterDropdown.style.display === 'flex') {
+                        if (!filterDropdown.contains(event.target) && !event.target.closest('.filter-btn')) {
+                            closeDropdown();
+                        }
+                    }
+                });
             } catch (err) {
                 console.error(err);
                 loadingEl.innerHTML = `<div style="color: #ff5555;">Failed to load file: ${err.message}</div>`;
@@ -375,6 +507,7 @@
 
         function selectSheet(sheetName) {
             activeSheetName = sheetName;
+            closeDropdown();
             
             // Highlight tab
             const tabs = tabsEl.querySelectorAll('.tab');
@@ -411,7 +544,6 @@
             sortAsc = true;
             searchInput.value = "";
             columnFilters = {};
-            columnFilterVisible = {};
 
             renderGrid();
         }
@@ -437,7 +569,6 @@
                     isSorted = true;
                 }
                 const isFiltered = !!columnFilters[index];
-                const isFilterVisible = !!columnFilterVisible[index];
 
                 headHtml += `
                     <th>
@@ -445,11 +576,8 @@
                             <span class="th-text" onclick="handleSort(${index})">${header}</span>
                             <span class="th-actions">
                                 <span class="sort-btn ${isSorted ? 'active' : ''}" onclick="event.stopPropagation(); handleSort(${index})">${sortIndicator}</span>
-                                <span class="filter-btn ${isFiltered ? 'active' : ''}" onclick="event.stopPropagation(); toggleColumnFilter(${index})">🔍</span>
+                                <span class="filter-btn ${isFiltered ? 'active' : ''}" onclick="openDropdown(event, ${index})">🔍</span>
                             </span>
-                        </div>
-                        <div class="col-filter-container ${isFilterVisible ? 'visible' : ''}" onclick="event.stopPropagation();">
-                            <input type="text" class="col-filter-input" placeholder="Filter..." value="${columnFilters[index] || ''}" oninput="handleColumnFilter(event, ${index})" />
                         </div>
                     </th>
                 `;
@@ -479,51 +607,22 @@
             renderGrid();
         }
 
-        function handleColumnFilter(event, colIndex) {
-            const val = event.target.value.toLowerCase().trim();
-            if (val === "") {
-                delete columnFilters[colIndex];
-            } else {
-                columnFilters[colIndex] = val;
-            }
-            
-            applyFilters();
-            renderGrid();
-        }
-
-        function toggleColumnFilter(colIndex) {
-            columnFilterVisible[colIndex] = !columnFilterVisible[colIndex];
-            renderGrid();
-            
-            // Auto focus input when toggled open
-            if (columnFilterVisible[colIndex]) {
-                setTimeout(() => {
-                    const thElements = tableHead.querySelectorAll('th');
-                    const input = thElements[colIndex].querySelector('.col-filter-input');
-                    if (input) {
-                        input.focus();
-                    }
-                }, 50);
-            }
-        }
-
         function applyFilters() {
             const globalQuery = searchInput.value.toLowerCase().trim();
             
             filteredRows = originalRows.filter(row => {
-                // 1. Check global search
+                // 1. Global text filter
                 if (globalQuery) {
                     const matchesGlobal = row.some(cell => String(cell).toLowerCase().includes(globalQuery));
                     if (!matchesGlobal) return false;
                 }
                 
-                // 2. Check column-specific filters
-                for (const [colIndex, filterText] of Object.entries(columnFilters)) {
-                    if (filterText) {
-                        const cellVal = String(row[colIndex] !== undefined ? row[colIndex] : "").toLowerCase();
-                        if (!cellVal.includes(filterText)) {
-                            return false;
-                        }
+                // 2. Column-specific dropdown selections
+                for (const [colIndex, checkedVals] of Object.entries(columnFilters)) {
+                    const val = row[colIndex];
+                    const cellVal = val !== undefined && val !== null ? String(val).trim() : "";
+                    if (!checkedVals.includes(cellVal)) {
+                        return false;
                     }
                 }
                 return true;
@@ -532,6 +631,155 @@
             if (sortColIndex !== null) {
                 applySorting();
             }
+        }
+
+        // Open Autofilter Dropdown
+        function openDropdown(event, colIndex) {
+            event.stopPropagation();
+            
+            if (filterDropdown.style.display === 'flex' && activeDropdownColIndex === colIndex) {
+                closeDropdown();
+                return;
+            }
+            
+            activeDropdownColIndex = colIndex;
+            
+            // Get unique column values
+            const uniqueValues = Array.from(
+                new Set(originalRows.map(row => {
+                    const val = row[colIndex];
+                    return val !== undefined && val !== null ? String(val).trim() : "";
+                }))
+            ).sort((a, b) => {
+                if (a === "") return 1; // Empty/blanks at bottom
+                if (b === "") return -1;
+                const numA = Number(a);
+                const numB = Number(b);
+                if (!isNaN(numA) && !isNaN(numB)) {
+                    return numA - numB;
+                }
+                return a.localeCompare(b);
+            });
+            
+            allUniqueColValues = uniqueValues;
+            searchedDropdownValues = [...uniqueValues];
+            
+            // Populate selection Set
+            checkedDropdownValues.clear();
+            if (columnFilters[colIndex]) {
+                columnFilters[colIndex].forEach(val => checkedDropdownValues.add(val));
+            } else {
+                uniqueValues.forEach(val => checkedDropdownValues.add(val));
+            }
+            
+            dropdownSearchInput.value = "";
+            renderDropdownList();
+            
+            // Position and display dropdown overlay
+            const rect = event.currentTarget.getBoundingClientRect();
+            filterDropdown.style.display = 'flex';
+            
+            let left = rect.left;
+            if (left + 240 > window.innerWidth) {
+                left = window.innerWidth - 250;
+            }
+            filterDropdown.style.left = `${Math.max(10, left)}px`;
+            filterDropdown.style.top = `${rect.bottom + window.scrollY + 6}px`;
+            
+            setTimeout(() => dropdownSearchInput.focus(), 50);
+        }
+
+        function renderDropdownList() {
+            dropdownList.innerHTML = "";
+            
+            // Render visible checkbox list items
+            searchedDropdownValues.forEach(value => {
+                const item = document.createElement('div');
+                item.className = 'dropdown-list-item';
+                
+                const label = document.createElement('label');
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.checked = checkedDropdownValues.has(value);
+                checkbox.onchange = () => toggleDropdownValue(value, checkbox.checked);
+                
+                const span = document.createElement('span');
+                span.textContent = value === "" ? "(Blanks)" : value;
+                
+                label.appendChild(checkbox);
+                label.appendChild(span);
+                item.appendChild(label);
+                dropdownList.appendChild(item);
+            });
+            
+            // Sync the Select All state
+            const allSearchedChecked = searchedDropdownValues.every(val => checkedDropdownValues.has(val));
+            selectAllCheckbox.checked = allSearchedChecked;
+            selectAllCheckbox.indeterminate = !allSearchedChecked && searchedDropdownValues.some(val => checkedDropdownValues.has(val));
+        }
+
+        function toggleDropdownValue(value, isChecked) {
+            if (isChecked) {
+                checkedDropdownValues.add(value);
+            } else {
+                checkedDropdownValues.delete(value);
+            }
+            
+            // Sync select all checkbox
+            const allSearchedChecked = searchedDropdownValues.every(val => checkedDropdownValues.has(val));
+            selectAllCheckbox.checked = allSearchedChecked;
+            selectAllCheckbox.indeterminate = !allSearchedChecked && searchedDropdownValues.some(val => checkedDropdownValues.has(val));
+        }
+
+        function handleDropdownSearch(event) {
+            const query = event.target.value.toLowerCase().trim();
+            if (query === "") {
+                searchedDropdownValues = [...allUniqueColValues];
+            } else {
+                searchedDropdownValues = allUniqueColValues.filter(val => 
+                    String(val === "" ? "(Blanks)" : val).toLowerCase().includes(query)
+                );
+            }
+            renderDropdownList();
+        }
+
+        function handleSelectAllChange(event) {
+            const isChecked = event.target.checked;
+            searchedDropdownValues.forEach(val => {
+                if (isChecked) {
+                    checkedDropdownValues.add(val);
+                } else {
+                    checkedDropdownValues.delete(val);
+                }
+            });
+            renderDropdownList();
+        }
+
+        function applyDropdownFilter() {
+            // Check if all values in the column are selected (i.e. no active filter needed)
+            const allChecked = allUniqueColValues.every(val => checkedDropdownValues.has(val));
+            
+            if (allChecked || checkedDropdownValues.size === 0) {
+                delete columnFilters[activeDropdownColIndex];
+            } else {
+                columnFilters[activeDropdownColIndex] = Array.from(checkedDropdownValues);
+            }
+            
+            applyFilters();
+            renderGrid();
+            closeDropdown();
+        }
+
+        function clearDropdownFilter() {
+            delete columnFilters[activeDropdownColIndex];
+            applyFilters();
+            renderGrid();
+            closeDropdown();
+        }
+
+        function closeDropdown() {
+            filterDropdown.style.display = 'none';
+            activeDropdownColIndex = null;
         }
 
         // Sorting
