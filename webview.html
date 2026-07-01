@@ -138,7 +138,6 @@
             padding: 10px 12px;
             border-right: 1px solid var(--border-color);
             border-bottom: 2px solid var(--border-color);
-            cursor: pointer;
             user-select: none;
             white-space: nowrap;
             z-index: 10;
@@ -148,10 +147,70 @@
             background-color: var(--hover-row-bg);
         }
 
-        th .sort-indicator {
-            margin-left: 6px;
-            font-size: 10px;
+        .th-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        .th-text {
+            cursor: pointer;
+            flex-grow: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .th-actions {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .sort-btn, .filter-btn {
+            cursor: pointer;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-size: 11px;
             color: var(--tab-inactive-fg);
+            transition: background-color 0.2s, color 0.2s;
+            user-select: none;
+        }
+
+        .sort-btn:hover, .filter-btn:hover {
+            background-color: var(--hover-row-bg);
+            color: var(--tab-active-fg);
+        }
+
+        .sort-btn.active, .filter-btn.active {
+            color: var(--highlight-color);
+            font-weight: bold;
+        }
+
+        .col-filter-container {
+            margin-top: 6px;
+            display: none;
+        }
+
+        .col-filter-container.visible {
+            display: block;
+        }
+
+        .col-filter-input {
+            width: 100%;
+            box-sizing: border-box;
+            background-color: var(--input-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 3px;
+            padding: 4px 6px;
+            color: var(--input-fg);
+            font-size: 11px;
+            outline: none;
+        }
+
+        .col-filter-input:focus {
+            border-color: var(--highlight-color);
         }
 
         td {
@@ -221,7 +280,7 @@
     <div class="toolbar">
         <div class="file-info" id="fileName">Loading workbook...</div>
         <div class="search-box">
-            <input type="text" id="searchInput" placeholder="Filter rows..." disabled>
+            <input type="text" id="searchInput" placeholder="Global filter..." disabled>
         </div>
     </div>
     
@@ -254,6 +313,9 @@
         
         let sortColIndex = null;
         let sortAsc = true;
+
+        let columnFilters = {};
+        let columnFilterVisible = {};
 
         const fileNameEl = document.getElementById('fileName');
         const searchInput = document.getElementById('searchInput');
@@ -344,10 +406,12 @@
             originalRows = rawData.slice(1);
             filteredRows = [...originalRows];
             
-            // Reset sorting
+            // Reset sorting and filtering
             sortColIndex = null;
             sortAsc = true;
             searchInput.value = "";
+            columnFilters = {};
+            columnFilterVisible = {};
 
             renderGrid();
         }
@@ -366,11 +430,29 @@
             // 1. Render Headers
             let headHtml = "<tr>";
             originalHeaders.forEach((header, index) => {
-                let indicator = "⇅";
+                let sortIndicator = "⇅";
+                let isSorted = false;
                 if (sortColIndex === index) {
-                    indicator = sortAsc ? "▲" : "▼";
+                    sortIndicator = sortAsc ? "▲" : "▼";
+                    isSorted = true;
                 }
-                headHtml += `<th onclick="handleSort(${index})">${header}<span class="sort-indicator">${indicator}</span></th>`;
+                const isFiltered = !!columnFilters[index];
+                const isFilterVisible = !!columnFilterVisible[index];
+
+                headHtml += `
+                    <th>
+                        <div class="th-container">
+                            <span class="th-text" onclick="handleSort(${index})">${header}</span>
+                            <span class="th-actions">
+                                <span class="sort-btn ${isSorted ? 'active' : ''}" onclick="event.stopPropagation(); handleSort(${index})">${sortIndicator}</span>
+                                <span class="filter-btn ${isFiltered ? 'active' : ''}" onclick="event.stopPropagation(); toggleColumnFilter(${index})">🔍</span>
+                            </span>
+                        </div>
+                        <div class="col-filter-container ${isFilterVisible ? 'visible' : ''}" onclick="event.stopPropagation();">
+                            <input type="text" class="col-filter-input" placeholder="Filter..." value="${columnFilters[index] || ''}" oninput="handleColumnFilter(event, ${index})" />
+                        </div>
+                    </th>
+                `;
             });
             headHtml += "</tr>";
             tableHead.innerHTML = headHtml;
@@ -393,21 +475,63 @@
 
         // Live Filtering
         function handleFilter() {
-            const query = searchInput.value.toLowerCase().trim();
-            if (!query) {
-                filteredRows = [...originalRows];
+            applyFilters();
+            renderGrid();
+        }
+
+        function handleColumnFilter(event, colIndex) {
+            const val = event.target.value.toLowerCase().trim();
+            if (val === "") {
+                delete columnFilters[colIndex];
             } else {
-                filteredRows = originalRows.filter(row => {
-                    return row.some(cell => String(cell).toLowerCase().includes(query));
-                });
+                columnFilters[colIndex] = val;
             }
             
-            // Re-apply sorting if active
+            applyFilters();
+            renderGrid();
+        }
+
+        function toggleColumnFilter(colIndex) {
+            columnFilterVisible[colIndex] = !columnFilterVisible[colIndex];
+            renderGrid();
+            
+            // Auto focus input when toggled open
+            if (columnFilterVisible[colIndex]) {
+                setTimeout(() => {
+                    const thElements = tableHead.querySelectorAll('th');
+                    const input = thElements[colIndex].querySelector('.col-filter-input');
+                    if (input) {
+                        input.focus();
+                    }
+                }, 50);
+            }
+        }
+
+        function applyFilters() {
+            const globalQuery = searchInput.value.toLowerCase().trim();
+            
+            filteredRows = originalRows.filter(row => {
+                // 1. Check global search
+                if (globalQuery) {
+                    const matchesGlobal = row.some(cell => String(cell).toLowerCase().includes(globalQuery));
+                    if (!matchesGlobal) return false;
+                }
+                
+                // 2. Check column-specific filters
+                for (const [colIndex, filterText] of Object.entries(columnFilters)) {
+                    if (filterText) {
+                        const cellVal = String(row[colIndex] !== undefined ? row[colIndex] : "").toLowerCase();
+                        if (!cellVal.includes(filterText)) {
+                            return false;
+                        }
+                    }
+                }
+                return true;
+            });
+
             if (sortColIndex !== null) {
                 applySorting();
             }
-            
-            renderGrid();
         }
 
         // Sorting
