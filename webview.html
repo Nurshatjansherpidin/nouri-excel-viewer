@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nouri's Excel Viewer</title>
+    <style>
+        :root {
+            --bg-color: var(--vscode-editor-background, #1e1e1e);
+            --fg-color: var(--vscode-editor-foreground, #d4d4d4);
+            --hdr-bg: var(--vscode-editorWidget-background, #252526);
+            --border-color: var(--vscode-panel-border, #3c3c3c);
+            --tab-active-bg: var(--vscode-tab-activeBackground, #1e1e1e);
+            --tab-inactive-bg: var(--vscode-tab-inactiveBackground, #2d2d2d);
+            --tab-active-fg: var(--vscode-tab-activeForeground, #ffffff);
+            --tab-inactive-fg: var(--vscode-tab-inactiveForeground, #969696);
+            --hover-row-bg: var(--vscode-list-hoverBackground, #2a2d2e);
+            --highlight-color: var(--vscode-textLink-foreground, #3794ff);
+            --input-bg: var(--vscode-input-background, #3c3c3c);
+            --input-fg: var(--vscode-input-foreground, #cccccc);
+            --input-border: var(--vscode-input-border, #3c3c3c);
+            --status-bg: var(--vscode-statusBar-background, #007acc);
+            --status-fg: var(--vscode-statusBar-foreground, #ffffff);
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--fg-color);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Top Toolbar */
+        .toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 16px;
+            background-color: var(--hdr-bg);
+            border-bottom: 1px solid var(--border-color);
+            gap: 16px;
+        }
+
+        .file-info {
+            font-weight: 600;
+            font-size: 14px;
+            color: var(--tab-active-fg);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .search-box {
+            display: flex;
+            align-items: center;
+            background-color: var(--input-bg);
+            border: 1px solid var(--input-border);
+            border-radius: 4px;
+            padding: 4px 8px;
+            width: 250px;
+        }
+
+        .search-box input {
+            background: transparent;
+            border: none;
+            color: var(--input-fg);
+            font-size: 13px;
+            width: 100%;
+            outline: none;
+        }
+
+        .search-box input::placeholder {
+            color: var(--tab-inactive-fg);
+        }
+
+        /* Sheet Tabs */
+        .tabs-container {
+            display: flex;
+            background-color: var(--tab-inactive-bg);
+            border-bottom: 1px solid var(--border-color);
+            overflow-x: auto;
+            scrollbar-width: none; /* Firefox */
+        }
+        
+        .tabs-container::-webkit-scrollbar {
+            display: none; /* Safari/Chrome */
+        }
+
+        .tab {
+            padding: 8px 16px;
+            cursor: pointer;
+            border-right: 1px solid var(--border-color);
+            background-color: var(--tab-inactive-bg);
+            color: var(--tab-inactive-fg);
+            font-size: 12px;
+            font-weight: 500;
+            white-space: nowrap;
+            transition: background-color 0.2s, color 0.2s;
+        }
+
+        .tab:hover {
+            background-color: var(--hover-row-bg);
+            color: var(--tab-active-fg);
+        }
+
+        .tab.active {
+            background-color: var(--tab-active-bg);
+            color: var(--tab-active-fg);
+            border-bottom: 2px solid var(--highlight-color);
+            font-weight: 600;
+        }
+
+        /* Grid Content */
+        .grid-container {
+            flex: 1;
+            overflow: auto;
+            position: relative;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            font-size: 13px;
+            text-align: left;
+        }
+
+        th {
+            position: sticky;
+            top: 0;
+            background-color: var(--hdr-bg);
+            color: var(--tab-active-fg);
+            font-weight: 600;
+            padding: 10px 12px;
+            border-right: 1px solid var(--border-color);
+            border-bottom: 2px solid var(--border-color);
+            cursor: pointer;
+            user-select: none;
+            white-space: nowrap;
+            z-index: 10;
+        }
+
+        th:hover {
+            background-color: var(--hover-row-bg);
+        }
+
+        th .sort-indicator {
+            margin-left: 6px;
+            font-size: 10px;
+            color: var(--tab-inactive-fg);
+        }
+
+        td {
+            padding: 8px 12px;
+            border-right: 1px solid var(--border-color);
+            border-bottom: 1px solid var(--border-color);
+            white-space: nowrap;
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        tr:nth-child(even) {
+            background-color: rgba(255, 255, 255, 0.015);
+        }
+
+        tr:hover {
+            background-color: var(--hover-row-bg);
+        }
+
+        /* Status Bar */
+        .status-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 4px 16px;
+            background-color: var(--status-bg);
+            color: var(--status-fg);
+            font-size: 11px;
+            font-weight: 400;
+        }
+
+        .status-bar span {
+            opacity: 0.9;
+        }
+
+        /* Loading Spinner */
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 14px;
+            color: var(--tab-inactive-fg);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .spinner {
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            border-top: 3px solid var(--highlight-color);
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="toolbar">
+        <div class="file-info" id="fileName">Loading workbook...</div>
+        <div class="search-box">
+            <input type="text" id="searchInput" placeholder="Filter rows..." disabled>
+        </div>
+    </div>
+    
+    <div class="tabs-container" id="tabs"></div>
+    
+    <div class="grid-container" id="gridContainer">
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <div>Parsing spreadsheet...</div>
+        </div>
+        <table id="dataTable" style="display: none;">
+            <thead id="tableHead"></thead>
+            <tbody id="tableBody"></tbody>
+        </table>
+    </div>
+
+    <div class="status-bar">
+        <div id="statusText">Ready</div>
+        <div id="statsText">Rows: 0 | Cols: 0</div>
+    </div>
+
+    <!-- SheetJS (XLSX) Library -->
+    <script src="xlsx.full.min.js"></script>
+    <script>
+        let workbook = null;
+        let activeSheetName = "";
+        let originalHeaders = [];
+        let originalRows = [];
+        let filteredRows = [];
+        
+        let sortColIndex = null;
+        let sortAsc = true;
+
+        const fileNameEl = document.getElementById('fileName');
+        const searchInput = document.getElementById('searchInput');
+        const tabsEl = document.getElementById('tabs');
+        const loadingEl = document.getElementById('loading');
+        const dataTable = document.getElementById('dataTable');
+        const tableHead = document.getElementById('tableHead');
+        const tableBody = document.getElementById('tableBody');
+        const statusText = document.getElementById('statusText');
+        const statsText = document.getElementById('statsText');
+
+        // Handle Messages from Extension Host
+        window.addEventListener('message', event => {
+            const message = event.data;
+            switch (message.type) {
+                case 'load':
+                    loadWorkbook(message.content, message.filename);
+                    break;
+            }
+        });
+
+        function loadWorkbook(base64Data, filename) {
+            try {
+                fileNameEl.textContent = filename;
+                statusText.textContent = "Parsing data...";
+                
+                // Parse Excel using SheetJS
+                workbook = XLSX.read(base64Data, { type: 'base64' });
+                
+                statusText.textContent = "Workbook loaded successfully";
+                renderTabs();
+                
+                // Load first sheet by default
+                if (workbook.SheetNames.length > 0) {
+                    selectSheet(workbook.SheetNames[0]);
+                }
+                
+                searchInput.disabled = false;
+                searchInput.addEventListener('input', handleFilter);
+            } catch (err) {
+                console.error(err);
+                loadingEl.innerHTML = `<div style="color: #ff5555;">Failed to load file: ${err.message}</div>`;
+                statusText.textContent = "Error loading workbook";
+            }
+        }
+
+        function renderTabs() {
+            tabsEl.innerHTML = "";
+            workbook.SheetNames.forEach(name => {
+                const tab = document.createElement('div');
+                tab.className = 'tab';
+                tab.textContent = name;
+                tab.onclick = () => selectSheet(name);
+                tabsEl.appendChild(tab);
+            });
+        }
+
+        function selectSheet(sheetName) {
+            activeSheetName = sheetName;
+            
+            // Highlight tab
+            const tabs = tabsEl.querySelectorAll('.tab');
+            tabs.forEach(tab => {
+                if (tab.textContent === sheetName) {
+                    tab.classList.add('active');
+                } else {
+                    tab.classList.remove('active');
+                }
+            });
+
+            statusText.textContent = `Loading sheet: ${sheetName}`;
+            
+            // Get sheet data
+            const sheet = workbook.Sheets[sheetName];
+            
+            // Parse to raw array of arrays
+            const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+            
+            if (rawData.length === 0) {
+                originalHeaders = [];
+                originalRows = [];
+                filteredRows = [];
+                renderEmptyGrid("Sheet is empty");
+                return;
+            }
+
+            originalHeaders = rawData[0];
+            originalRows = rawData.slice(1);
+            filteredRows = [...originalRows];
+            
+            // Reset sorting
+            sortColIndex = null;
+            sortAsc = true;
+            searchInput.value = "";
+
+            renderGrid();
+        }
+
+        function renderEmptyGrid(message) {
+            loadingEl.style.display = 'none';
+            dataTable.style.display = 'none';
+            statusText.textContent = message;
+            statsText.textContent = "Rows: 0 | Cols: 0";
+        }
+
+        function renderGrid() {
+            loadingEl.style.display = 'none';
+            dataTable.style.display = 'table';
+
+            // 1. Render Headers
+            let headHtml = "<tr>";
+            originalHeaders.forEach((header, index) => {
+                let indicator = "⇅";
+                if (sortColIndex === index) {
+                    indicator = sortAsc ? "▲" : "▼";
+                }
+                headHtml += `<th onclick="handleSort(${index})">${header}<span class="sort-indicator">${indicator}</span></th>`;
+            });
+            headHtml += "</tr>";
+            tableHead.innerHTML = headHtml;
+
+            // 2. Render Rows
+            let bodyHtml = "";
+            filteredRows.forEach(row => {
+                bodyHtml += "<tr>";
+                originalHeaders.forEach((_, colIndex) => {
+                    const val = row[colIndex] !== undefined ? row[colIndex] : "";
+                    bodyHtml += `<td title="${val}">${val}</td>`;
+                });
+                bodyHtml += "</tr>";
+            });
+            tableBody.innerHTML = bodyHtml;
+
+            statusText.textContent = `Active: ${activeSheetName}`;
+            statsText.textContent = `Rows: ${filteredRows.length} of ${originalRows.length} | Cols: ${originalHeaders.length}`;
+        }
+
+        // Live Filtering
+        function handleFilter() {
+            const query = searchInput.value.toLowerCase().trim();
+            if (!query) {
+                filteredRows = [...originalRows];
+            } else {
+                filteredRows = originalRows.filter(row => {
+                    return row.some(cell => String(cell).toLowerCase().includes(query));
+                });
+            }
+            
+            // Re-apply sorting if active
+            if (sortColIndex !== null) {
+                applySorting();
+            }
+            
+            renderGrid();
+        }
+
+        // Sorting
+        function handleSort(colIndex) {
+            if (sortColIndex === colIndex) {
+                sortAsc = !sortAsc;
+            } else {
+                sortColIndex = colIndex;
+                sortAsc = true;
+            }
+            
+            applySorting();
+            renderGrid();
+        }
+
+        function applySorting() {
+            filteredRows.sort((a, b) => {
+                let valA = a[sortColIndex];
+                let valB = b[sortColIndex];
+
+                // Treat undefined/null as empty strings
+                valA = valA !== undefined ? valA : "";
+                valB = valB !== undefined ? valB : "";
+
+                // Numerical sort if both are numbers/numeric strings
+                const numA = Number(valA);
+                const numB = Number(valB);
+                if (!isNaN(numA) && !isNaN(numB) && valA !== "" && valB !== "") {
+                    return sortAsc ? numA - numB : numB - numA;
+                }
+
+                // String sort
+                const strA = String(valA).toLowerCase();
+                const strB = String(valB).toLowerCase();
+                if (strA < strB) return sortAsc ? -1 : 1;
+                if (strA > strB) return sortAsc ? 1 : -1;
+                return 0;
+            });
+        }
+    </script>
+</body>
+</html>

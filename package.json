@@ -1,0 +1,33 @@
+{
+  "name": "nouri-excel-viewer",
+  "displayName": "Nouri's Excel Viewer",
+  "description": "A premium theme-responsive Excel viewer with sorting, filtering, and searching.",
+  "version": "1.0.0",
+  "publisher": "nouri",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Visualization",
+    "Other"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "nouriExcelViewer.excelViewer",
+        "displayName": "Nouri's Excel Viewer",
+        "selector": [
+          {
+            "filenamePattern": "*.xlsx"
+          },
+          {
+            "filenamePattern": "*.xls"
+          }
+        ],
+        "priority": "option"
+      }
+    ]
+  }
+}
