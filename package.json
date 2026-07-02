@@ -4,6 +4,7 @@
   "description": "A premium theme-responsive Excel viewer with sorting, filtering, and searching.",
   "version": "1.0.0",
   "publisher": "nouri",
+  "license": "MIT",
   "engines": {
     "vscode": "^1.74.0"
   },
