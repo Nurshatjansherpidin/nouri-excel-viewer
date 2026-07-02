@@ -161,28 +161,31 @@
             white-space: nowrap;
         }
 
-        .th-actions {
-            display: flex;
-            align-items: center;
-            gap: 4px;
+        .th-text .sort-arrow {
+            margin-left: 4px;
+            color: var(--highlight-color);
+            font-size: 11px;
+            font-weight: bold;
         }
 
-        .sort-btn, .filter-btn {
+        .filter-btn {
             cursor: pointer;
-            padding: 2px 4px;
+            padding: 3px;
             border-radius: 3px;
-            font-size: 11px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             color: var(--tab-inactive-fg);
             transition: background-color 0.2s, color 0.2s;
             user-select: none;
         }
 
-        .sort-btn:hover, .filter-btn:hover {
+        .filter-btn:hover {
             background-color: var(--hover-row-bg);
             color: var(--tab-active-fg);
         }
 
-        .sort-btn.active, .filter-btn.active {
+        .filter-btn.active {
             color: var(--highlight-color);
             font-weight: bold;
         }
@@ -257,12 +260,45 @@
             border-radius: 4px;
             box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
             width: 230px;
-            max-height: 320px;
+            max-height: 380px;
             display: none; /* Handled via JavaScript flex */
             flex-direction: column;
             z-index: 10000;
             font-size: 12px;
             color: var(--fg-color);
+        }
+
+        /* Sort Section Inside Dropdown */
+        .dropdown-sort-section {
+            padding: 6px 0;
+        }
+
+        .dropdown-sort-item {
+            padding: 6px 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .dropdown-sort-item:hover {
+            background-color: var(--hover-row-bg);
+            color: var(--tab-active-fg);
+        }
+
+        .sort-icon-lbl {
+            font-size: 13px;
+            font-weight: bold;
+            color: var(--highlight-color);
+            width: 14px;
+            text-align: center;
+        }
+
+        .dropdown-divider {
+            height: 1px;
+            background-color: var(--border-color);
+            margin: 4px 0;
         }
 
         .dropdown-search {
@@ -389,6 +425,18 @@
 
     <!-- Excel-style Dropdown Popup overlay -->
     <div id="filterDropdown" class="filter-dropdown">
+        <!-- Integrated Sorting Section -->
+        <div class="dropdown-sort-section">
+            <div class="dropdown-sort-item" onclick="applySortFromDropdown(true)">
+                <span class="sort-icon-lbl">↑</span> Sort Ascending (A to Z)
+            </div>
+            <div class="dropdown-sort-item" onclick="applySortFromDropdown(false)">
+                <span class="sort-icon-lbl">↓</span> Sort Descending (Z to A)
+            </div>
+        </div>
+        <div class="dropdown-divider"></div>
+        
+        <!-- Filtering Section -->
         <div class="dropdown-search">
             <input type="text" id="dropdownSearchInput" placeholder="Search values...">
         </div>
@@ -445,6 +493,13 @@
         const dropdownList = document.getElementById('dropdownList');
         const dropdownSearchInput = document.getElementById('dropdownSearchInput');
         const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+
+        // Funnel SVG used for column filter button
+        const funnelSvg = `
+            <svg viewBox="0 0 16 16" width="11" height="11" fill="currentColor">
+                <path d="M1.5 1.5A.5.5 0 0 1 2 1h12a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-.128.33L10 8.625V13.5a.5.5 0 0 1-.307.462l-3 1.2A.5.5 0 0 1 6 14.7V8.625L1.628 3.83A.5.5 0 0 1 1.5 3.5v-2z"/>
+            </svg>
+        `;
 
         // Handle Messages from Extension Host
         window.addEventListener('message', event => {
@@ -562,10 +617,11 @@
             // 1. Render Headers
             let headHtml = "<tr>";
             originalHeaders.forEach((header, index) => {
-                let sortIndicator = "⇅";
+                let sortIndicatorHtml = "";
                 let isSorted = false;
                 if (sortColIndex === index) {
-                    sortIndicator = sortAsc ? "▲" : "▼";
+                    const arrow = sortAsc ? "▲" : "▼";
+                    sortIndicatorHtml = `<span class="sort-arrow">${arrow}</span>`;
                     isSorted = true;
                 }
                 const isFiltered = !!columnFilters[index];
@@ -573,10 +629,9 @@
                 headHtml += `
                     <th>
                         <div class="th-container">
-                            <span class="th-text" onclick="handleSort(${index})">${header}</span>
-                            <span class="th-actions">
-                                <span class="sort-btn ${isSorted ? 'active' : ''}" onclick="event.stopPropagation(); handleSort(${index})">${sortIndicator}</span>
-                                <span class="filter-btn ${isFiltered ? 'active' : ''}" onclick="openDropdown(event, ${index})">🔍</span>
+                            <span class="th-text" onclick="handleSort(${index})">${header}${sortIndicatorHtml}</span>
+                            <span class="filter-btn ${isFiltered || isSorted ? 'active' : ''}" onclick="openDropdown(event, ${index})">
+                                ${funnelSvg}
                             </span>
                         </div>
                     </th>
@@ -793,6 +848,18 @@
             
             applySorting();
             renderGrid();
+        }
+
+        // Triggered from within the dropdown menu
+        function applySortFromDropdown(asc) {
+            if (activeDropdownColIndex === null) return;
+            
+            sortColIndex = activeDropdownColIndex;
+            sortAsc = asc;
+            
+            applySorting();
+            renderGrid();
+            closeDropdown();
         }
 
         function applySorting() {
