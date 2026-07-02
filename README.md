@@ -24,10 +24,10 @@ To publish this extension to your GitHub:
 1. Create a new repository on GitHub named `nouri-excel-viewer`.
 2. Open your terminal in the extension folder and run:
    ```bash
-   git remote add origin https://github.com/YOUR_USERNAME/nouri-excel-viewer.git
-   git branch -M main
-   git push -u origin main
-   ```
+    git remote add origin git@github.com:Nurshatjansherpidin/nouri-excel-viewer.git
+    git branch -M main
+    git push -u origin main
+    ```
 
 ---
 
